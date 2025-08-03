@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Construtora JHS - Dashboard</title>
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
+    
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #f0f0f0;
+        }
+        header {
+            background: #2c3e50;
+            color: white;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 20px auto;
+            padding: 0 15px;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 10px 15px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .logout-btn {
+            background: #e74c3c;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Construtora JHS</h1>
+        <button class="logout-btn" id="logout-btn">Sair</button>
+    </header>
+    
+    <div class="container">
+        <!-- INFORMAÇÕES DA OBRA -->
+        <div class="card">
+            <h2>Informações da Obra</h2>
+            <input type="text" id="obra-nome" placeholder="Nome da Obra">
+            <input type="number" id="obra-valor" placeholder="Valor (R$)">
+            <input type="date" id="obra-data">
+            <button id="salvar-obra">Salvar</button>
+        </div>
+        
+        <!-- VALES RECEBIDOS -->
+        <div class="card">
+            <h2>Vales Recebidos</h2>
+            <input type="number" id="vale-valor" placeholder="Valor (R$)">
+            <input type="date" id="vale-data">
+            <button id="add-vale">Adicionar Vale</button>
+        </div>
+    </div>
+
+    <script>
+        // CONFIG DO FIREBASE (MESMA DO INDEX.HTML)
+        const firebaseConfig = {
+            apiKey: "AIzaSyC5cnKYsZ5wCI8Aeho0KEmeFTSxtDd0AkY",
+            authDomain: "construtora-jhs-2693d.firebaseapp.com",
+            projectId: "construtora-jhs-2693d",
+            storageBucket: "construtora-jhs-2693d.appspot.com",
+            messagingSenderId: "358435009217",
+            appId: "1:358435009217:web:2e11ec33ee15a8b7ac9a40"
+        };
+        
+        // INICIALIZA O FIREBASE
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+        
+        // VERIFICA SE O USUÁRIO ESTÁ LOGADO
+        auth.onAuthStateChanged((user) => {
+            if (!user) {
+                window.location.href = "index.html";
+            }
+        });
+        
+        // BOTÃO DE SAIR
+        document.getElementById("logout-btn").addEventListener("click", () => {
+            auth.signOut();
+        });
+        
+        // SALVAR INFORMAÇÕES DA OBRA
+        document.getElementById("salvar-obra").addEventListener("click", () => {
+            const obraData = {
+                nome: document.getElementById("obra-nome").value,
+                valor: document.getElementById("obra-valor").value,
+                data: document.getElementById("obra-data").value,
+                userId: auth.currentUser.uid
+            };
+            
+            db.collection("obras").doc(auth.currentUser.uid).set(obraData)
+                .then(() => {
+                    alert("Obra salva com sucesso!");
+                });
+        });
+        
+        // ADICIONAR VALE
+        document.getElementById("add-vale").addEventListener("click", () => {
+            const valeData = {
+                valor: document.getElementById("vale-valor").value,
+                data: document.getElementById("vale-data").value,
+                userId: auth.currentUser.uid
+            };
+            
+            db.collection("vales").add(valeData)
+                .then(() => {
+                    alert("Vale adicionado!");
+                });
+        });
+    </script>
+</body>
+</html>
