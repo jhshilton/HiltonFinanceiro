@@ -5,9 +5,53 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Construtora JHS - Login</title>
     
-    <!-- Firebase SDK (OBRIGATÓRIO) -->
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <!-- Firebase SDK v9 (modular) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.0.0/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/9.0.0/firebase-auth.js";
+
+        // Configuração do Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyC5cnKYsZ5wCI8Aeho0KEmeFTSxtDd0AkY",
+            authDomain: "construtora-jhs-2693d.firebaseapp.com",
+            projectId: "construtora-jhs-2693d",
+            storageBucket: "construtora-jhs-2693d.appspot.com",
+            messagingSenderId: "358435009217",
+            appId: "1:358435009217:web:2e11ec33ee15a8b7ac9a40"
+        };
+
+        // Inicialização do Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+
+        // Login
+        document.getElementById("login-btn").addEventListener("click", () => {
+            const email = document.getElementById("email").value;
+            const password = document.getElementById("password").value;
+            
+            signInWithEmailAndPassword(auth, email, password)
+                .then(() => {
+                    window.location.href = "dashboard.html";
+                })
+                .catch((error) => {
+                    document.getElementById("error-message").textContent = error.message;
+                });
+        });
+        
+        // Cadastro
+        document.getElementById("register-btn").addEventListener("click", () => {
+            const email = document.getElementById("email").value;
+            const password = document.getElementById("password").value;
+            
+            createUserWithEmailAndPassword(auth, email, password)
+                .then(() => {
+                    window.location.href = "dashboard.html";
+                })
+                .catch((error) => {
+                    document.getElementById("error-message").textContent = error.message;
+                });
+        });
+    </script>
     
     <style>
         body {
@@ -27,25 +71,41 @@
             width: 300px;
             text-align: center;
         }
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+        }
         input {
             width: 100%;
             padding: 10px;
             margin: 10px 0;
             border: 1px solid #ddd;
             border-radius: 5px;
+            box-sizing: border-box;
         }
         button {
             width: 100%;
             padding: 10px;
-            background: #4CAF50;
+            background: #3498db;
             color: white;
             border: none;
             border-radius: 5px;
             cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #2980b9;
+        }
+        #register-btn {
+            background: #2ecc71;
+        }
+        #register-btn:hover {
+            background: #27ae60;
         }
         .error {
-            color: red;
+            color: #e74c3c;
             font-size: 14px;
+            margin-top: 10px;
         }
     </style>
 </head>
@@ -58,49 +118,5 @@
         <button id="register-btn">Cadastrar</button>
         <div id="error-message" class="error"></div>
     </div>
-
-    <script>
-        // CONFIGURAÇÃO DO FIREBASE (SUA CONFIG AQUI!)
-        const firebaseConfig = {
-            apiKey: "AIzaSyC5cnKYsZ5wCI8Aeho0KEmeFTSxtDd0AkY",
-            authDomain: "construtora-jhs-2693d.firebaseapp.com",
-            projectId: "construtora-jhs-2693d",
-            storageBucket: "construtora-jhs-2693d.appspot.com",
-            messagingSenderId: "358435009217",
-            appId: "1:358435009217:web:2e11ec33ee15a8b7ac9a40"
-        };
-        
-        // INICIALIZA O FIREBASE
-        firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
-        
-        // LOGIN
-        document.getElementById("login-btn").addEventListener("click", () => {
-            const email = document.getElementById("email").value;
-            const password = document.getElementById("password").value;
-            
-            auth.signInWithEmailAndPassword(email, password)
-                .then(() => {
-                    window.location.href = "dashboard.html";
-                })
-                .catch((error) => {
-                    document.getElementById("error-message").textContent = error.message;
-                });
-        });
-        
-        // CADASTRO
-        document.getElementById("register-btn").addEventListener("click", () => {
-            const email = document.getElementById("email").value;
-            const password = document.getElementById("password").value;
-            
-            auth.createUserWithEmailAndPassword(email, password)
-                .then(() => {
-                    window.location.href = "dashboard.html";
-                })
-                .catch((error) => {
-                    document.getElementById("error-message").textContent = error.message;
-                });
-        });
-    </script>
 </body>
 </html>

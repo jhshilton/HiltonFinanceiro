@@ -5,49 +5,639 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Construtora JHS - Dashboard</title>
     
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
+    <!-- Firebase SDK v9 (modular) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.0.0/firebase-app.js";
+        import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/9.0.0/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, addDoc, getDoc, getDocs, query, where, orderBy, deleteDoc } from "https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore.js";
+        import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/9.0.0/firebase-storage.js";
+
+        // Configuração do Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyC5cnKYsZ5wCI8Aeho0KEmeFTSxtDd0AkY",
+            authDomain: "construtora-jhs-2693d.firebaseapp.com",
+            projectId: "construtora-jhs-2693d",
+            storageBucket: "construtora-jhs-2693d.appspot.com",
+            messagingSenderId: "358435009217",
+            appId: "1:358435009217:web:2e11ec33ee15a8b7ac9a40"
+        };
+
+        // Inicialização do Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const storage = getStorage(app);
+        const { jsPDF } = window.jspdf;
+
+        // Variáveis globais
+        let currentUser = null;
+        let selectedFile = null;
+
+        // Verificação de autenticação
+        onAuthStateChanged(auth, (user) => {
+            if (!user) {
+                window.location.href = "index.html";
+            } else {
+                currentUser = user;
+                loadAllData();
+            }
+        });
+
+        // Logout
+        document.getElementById("logout-btn").addEventListener("click", () => {
+            signOut(auth);
+        });
+
+        // 1. Informações da Obra
+        async function loadProjectData() {
+            try {
+                const docRef = doc(db, "projects", currentUser.uid);
+                const docSnap = await getDoc(docRef);
+                
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    document.getElementById("project-name").value = data.name || "";
+                    document.getElementById("project-value").value = data.value || "";
+                    document.getElementById("project-start").value = data.startDate || "";
+                    document.getElementById("project-description").value = data.description || "";
+                    updateReport();
+                }
+            } catch (error) {
+                console.error("Erro ao carregar obra:", error);
+            }
+        }
+
+        document.getElementById("save-project-btn").addEventListener("click", async () => {
+            try {
+                const projectData = {
+                    name: document.getElementById("project-name").value,
+                    value: parseFloat(document.getElementById("project-value").value) || 0,
+                    startDate: document.getElementById("project-start").value,
+                    description: document.getElementById("project-description").value,
+                    userId: currentUser.uid,
+                    lastUpdate: new Date()
+                };
+
+                await setDoc(doc(db, "projects", currentUser.uid), projectData);
+                alert("Informações da obra salvas com sucesso!");
+                updateReport();
+            } catch (error) {
+                console.error("Erro ao salvar obra:", error);
+            }
+        });
+
+        // 2. Vales Recebidos
+        async function loadPayments() {
+            try {
+                const q = query(
+                    collection(db, "payments"),
+                    where("userId", "==", currentUser.uid),
+                    orderBy("date", "desc")
+                );
+                
+                const querySnapshot = await getDocs(q);
+                const tbody = document.querySelector("#payments-table tbody");
+                tbody.innerHTML = "";
+                
+                querySnapshot.forEach((doc) => {
+                    const payment = doc.data();
+                    const row = document.createElement("tr");
+                    row.innerHTML = `
+                        <td>${formatDate(payment.date)}</td>
+                        <td>${payment.description}</td>
+                        <td>${formatCurrency(payment.value)}</td>
+                        <td>
+                            <button class="btn-danger delete-payment" data-id="${doc.id}">Excluir</button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+
+                updateReport();
+                setupDeleteButtons();
+            } catch (error) {
+                console.error("Erro ao carregar vales:", error);
+            }
+        }
+
+        document.getElementById("add-payment-btn").addEventListener("click", async () => {
+            try {
+                const paymentData = {
+                    value: parseFloat(document.getElementById("payment-value").value) || 0,
+                    date: document.getElementById("payment-date").value,
+                    description: document.getElementById("payment-description").value,
+                    userId: currentUser.uid,
+                    createdAt: new Date()
+                };
+
+                if (!paymentData.date || !paymentData.description) {
+                    alert("Preencha todos os campos!");
+                    return;
+                }
+
+                await addDoc(collection(db, "payments"), paymentData);
+                document.getElementById("payment-value").value = "";
+                document.getElementById("payment-description").value = "";
+                loadPayments();
+            } catch (error) {
+                console.error("Erro ao adicionar vale:", error);
+            }
+        });
+
+        // 3. Serviços Extras
+        async function loadExtras() {
+            try {
+                const q = query(
+                    collection(db, "extras"),
+                    where("userId", "==", currentUser.uid),
+                    orderBy("date", "desc")
+                );
+                
+                const querySnapshot = await getDocs(q);
+                const tbody = document.querySelector("#extras-table tbody");
+                tbody.innerHTML = "";
+                
+                querySnapshot.forEach((doc) => {
+                    const extra = doc.data();
+                    const row = document.createElement("tr");
+                    row.innerHTML = `
+                        <td>${formatDate(extra.date)}</td>
+                        <td>${extra.service}</td>
+                        <td>${formatCurrency(extra.value)}</td>
+                        <td>
+                            <button class="btn-danger delete-extra" data-id="${doc.id}">Excluir</button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+
+                updateReport();
+                setupDeleteButtons();
+            } catch (error) {
+                console.error("Erro ao carregar serviços extras:", error);
+            }
+        }
+
+        document.getElementById("add-extra-btn").addEventListener("click", async () => {
+            try {
+                const extraData = {
+                    service: document.getElementById("extra-service").value,
+                    value: parseFloat(document.getElementById("extra-value").value) || 0,
+                    date: document.getElementById("extra-date").value,
+                    userId: currentUser.uid,
+                    createdAt: new Date()
+                };
+
+                if (!extraData.date || !extraData.service) {
+                    alert("Preencha todos os campos!");
+                    return;
+                }
+
+                await addDoc(collection(db, "extras"), extraData);
+                document.getElementById("extra-service").value = "";
+                document.getElementById("extra-value").value = "";
+                loadExtras();
+            } catch (error) {
+                console.error("Erro ao adicionar serviço extra:", error);
+            }
+        });
+
+        // 4. Comprovantes PIX
+        document.getElementById("receipt-file").addEventListener("change", (e) => {
+            selectedFile = e.target.files[0];
+            if (selectedFile) {
+                document.getElementById("file-name").textContent = selectedFile.name;
+                
+                if (selectedFile.type.startsWith("image/")) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        document.getElementById("receipt-preview").src = e.target.result;
+                        document.getElementById("receipt-preview").style.display = "block";
+                    };
+                    reader.readAsDataURL(selectedFile);
+                }
+            } else {
+                document.getElementById("file-name").textContent = "Nenhum arquivo selecionado";
+                document.getElementById("receipt-preview").style.display = "none";
+            }
+        });
+
+        async function loadReceipts() {
+            try {
+                const q = query(
+                    collection(db, "receipts"),
+                    where("userId", "==", currentUser.uid),
+                    orderBy("createdAt", "desc")
+                );
+                
+                const querySnapshot = await getDocs(q);
+                const tbody = document.querySelector("#receipts-table tbody");
+                tbody.innerHTML = "";
+                
+                querySnapshot.forEach((doc) => {
+                    const receipt = doc.data();
+                    const row = document.createElement("tr");
+                    row.innerHTML = `
+                        <td>${formatDate(receipt.createdAt)}</td>
+                        <td>${receipt.description}</td>
+                        <td>
+                            ${receipt.fileUrl ? 
+                                `<a href="${receipt.fileUrl}" target="_blank" class="btn">Visualizar</a>` : 
+                                "Nenhum arquivo"}
+                        </td>
+                        <td>
+                            <button class="btn-danger delete-receipt" data-id="${doc.id}">Excluir</button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+
+                setupDeleteButtons();
+            } catch (error) {
+                console.error("Erro ao carregar comprovantes:", error);
+            }
+        }
+
+        document.getElementById("add-receipt-btn").addEventListener("click", async () => {
+            try {
+                const description = document.getElementById("receipt-description").value;
+                
+                if (!description || !selectedFile) {
+                    alert("Preencha todos os campos e selecione um arquivo!");
+                    return;
+                }
+
+                const storageRef = ref(storage, `receipts/${currentUser.uid}/${Date.now()}_${selectedFile.name}`);
+                const uploadTask = await uploadBytes(storageRef, selectedFile);
+                const downloadURL = await getDownloadURL(uploadTask.ref);
+
+                const receiptData = {
+                    description: description,
+                    fileUrl: downloadURL,
+                    userId: currentUser.uid,
+                    createdAt: new Date()
+                };
+
+                await addDoc(collection(db, "receipts"), receiptData);
+                
+                document.getElementById("receipt-description").value = "";
+                document.getElementById("receipt-file").value = "";
+                document.getElementById("file-name").textContent = "Nenhum arquivo selecionado";
+                document.getElementById("receipt-preview").style.display = "none";
+                selectedFile = null;
+                loadReceipts();
+            } catch (error) {
+                console.error("Erro ao salvar comprovante:", error);
+            }
+        });
+
+        // 5. Relatório e Funções Auxiliares
+        function updateReport() {
+            const projectValue = parseFloat(document.getElementById("project-value").value) || 0;
+            
+            // Calcular total de vales recebidos
+            let totalReceived = 0;
+            document.querySelectorAll("#payments-table tbody tr").forEach(row => {
+                const valueText = row.cells[2].textContent.replace("R$", "").replace(/\./g, "").replace(",", ".").trim();
+                totalReceived += parseFloat(valueText) || 0;
+            });
+            
+            // Calcular total de serviços extras
+            let totalExtras = 0;
+            document.querySelectorAll("#extras-table tbody tr").forEach(row => {
+                const valueText = row.cells[2].textContent.replace("R$", "").replace(/\./g, "").replace(",", ".").trim();
+                totalExtras += parseFloat(valueText) || 0;
+            });
+            
+            // Calcular valor total (obra + extras)
+            const totalValue = projectValue + totalExtras;
+            
+            // Atualizar os elementos na tela
+            document.getElementById("project-value-display").textContent = formatCurrency(projectValue);
+            document.getElementById("total-extras").textContent = formatCurrency(totalExtras);
+            document.getElementById("total-value").textContent = formatCurrency(totalValue);
+            document.getElementById("total-received").textContent = formatCurrency(totalReceived);
+            
+            // Calcular saldo
+            const balance = totalValue - totalReceived;
+            const balanceElement = document.getElementById("balance");
+            balanceElement.textContent = formatCurrency(balance);
+            
+            // Aplicar cor conforme o saldo
+            if (totalReceived <= totalValue) {
+                balanceElement.style.color = '#2ecc71'; // Verde
+            } else {
+                balanceElement.style.color = '#e74c3c'; // Vermelho
+            }
+        }
+
+        document.getElementById("generate-pdf-btn").addEventListener("click", generatePDFReport);
+
+        function generatePDFReport() {
+            const doc = new jsPDF();
+            
+            // Cabeçalho
+            doc.setFontSize(18);
+            doc.setTextColor(40, 40, 40);
+            doc.text("Relatório Financeiro - Construtora JHS", 105, 15, { align: "center" });
+            
+            doc.setFontSize(12);
+            doc.text(`Emitido em: ${new Date().toLocaleDateString("pt-BR")}`, 105, 25, { align: "center" });
+            
+            // Informações da Obra
+            doc.setFontSize(14);
+            doc.text("Informações da Obra", 14, 40);
+            
+            doc.setFontSize(12);
+            doc.text(`Nome: ${document.getElementById("project-name").value || "Não informado"}`, 14, 50);
+            doc.text(`Valor: ${document.getElementById("project-value-display").textContent}`, 14, 60);
+            
+            // Vales Recebidos
+            doc.setFontSize(14);
+            doc.text("Vales Recebidos", 14, 80);
+            
+            const payments = [];
+            document.querySelectorAll("#payments-table tbody tr").forEach(row => {
+                payments.push([
+                    row.cells[0].textContent,
+                    row.cells[1].textContent,
+                    row.cells[2].textContent
+                ]);
+            });
+            
+            if (payments.length > 0) {
+                doc.autoTable({
+                    startY: 85,
+                    head: [["Data", "Descrição", "Valor"]],
+                    body: payments,
+                    theme: "grid"
+                });
+            } else {
+                doc.text("Nenhum vale registrado", 14, 85);
+            }
+            
+            // Serviços Extras
+            doc.setFontSize(14);
+            doc.text("Serviços Extras", 14, doc.autoTable.previous.finalY + 15);
+            
+            const extras = [];
+            document.querySelectorAll("#extras-table tbody tr").forEach(row => {
+                extras.push([
+                    row.cells[0].textContent,
+                    row.cells[1].textContent,
+                    row.cells[2].textContent
+                ]);
+            });
+            
+            if (extras.length > 0) {
+                doc.autoTable({
+                    startY: doc.autoTable.previous.finalY + 20,
+                    head: [["Data", "Serviço", "Valor"]],
+                    body: extras,
+                    theme: "grid"
+                });
+            } else {
+                doc.text("Nenhum serviço extra registrado", 14, doc.autoTable.previous.finalY + 20);
+            }
+            
+            // Resumo
+            doc.setFontSize(14);
+            doc.text("Resumo Financeiro", 14, doc.autoTable.previous.finalY + 30);
+            
+            doc.setFontSize(12);
+            doc.text(`Valor da Obra: ${document.getElementById("project-value-display").textContent}`, 14, doc.autoTable.previous.finalY + 40);
+            doc.text(`Total Serviços Extras: ${document.getElementById("total-extras").textContent}`, 14, doc.autoTable.previous.finalY + 50);
+            doc.text(`Valor Total: ${document.getElementById("total-value").textContent}`, 14, doc.autoTable.previous.finalY + 60);
+            doc.text(`Total Vales Recebidos: ${document.getElementById("total-received").textContent}`, 14, doc.autoTable.previous.finalY + 70);
+            
+            // Saldo com cor
+            const balance = document.getElementById("balance").textContent;
+            const balanceColor = document.getElementById("balance").style.color;
+            
+            doc.setTextColor(balanceColor === 'rgb(46, 204, 113)' ? 46 : 231, balanceColor === 'rgb(46, 204, 113)' ? 204 : 76, balanceColor === 'rgb(46, 204, 113)' ? 113 : 60);
+            doc.text(`Saldo: ${balance}`, 14, doc.autoTable.previous.finalY + 80);
+            
+            doc.save(`Relatorio_Construtora_JHS_${new Date().toLocaleDateString("pt-BR")}.pdf`);
+        }
+
+        function setupDeleteButtons() {
+            // Vales
+            document.querySelectorAll(".delete-payment").forEach(btn => {
+                btn.addEventListener("click", async (e) => {
+                    const id = e.target.getAttribute("data-id");
+                    if (confirm("Tem certeza que deseja excluir este vale?")) {
+                        try {
+                            await deleteDoc(doc(db, "payments", id));
+                            loadPayments();
+                        } catch (error) {
+                            console.error("Erro ao excluir vale:", error);
+                        }
+                    }
+                });
+            });
+            
+            // Serviços Extras
+            document.querySelectorAll(".delete-extra").forEach(btn => {
+                btn.addEventListener("click", async (e) => {
+                    const id = e.target.getAttribute("data-id");
+                    if (confirm("Tem certeza que deseja excluir este serviço extra?")) {
+                        try {
+                            await deleteDoc(doc(db, "extras", id));
+                            loadExtras();
+                        } catch (error) {
+                            console.error("Erro ao excluir serviço extra:", error);
+                        }
+                    }
+                });
+            });
+            
+            // Comprovantes
+            document.querySelectorAll(".delete-receipt").forEach(btn => {
+                btn.addEventListener("click", async (e) => {
+                    const id = e.target.getAttribute("data-id");
+                    if (confirm("Tem certeza que deseja excluir este comprovante?")) {
+                        try {
+                            const docRef = doc(db, "receipts", id);
+                            const docSnap = await getDoc(docRef);
+                            
+                            if (docSnap.exists()) {
+                                const receipt = docSnap.data();
+                                if (receipt.fileUrl) {
+                                    const fileRef = ref(storage, receipt.fileUrl);
+                                    await deleteObject(fileRef);
+                                }
+                                await deleteDoc(docRef);
+                                loadReceipts();
+                            }
+                        } catch (error) {
+                            console.error("Erro ao excluir comprovante:", error);
+                        }
+                    }
+                });
+            });
+        }
+
+        function loadAllData() {
+            loadProjectData();
+            loadPayments();
+            loadExtras();
+            loadReceipts();
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return "Não informado";
+            try {
+                const date = dateString.toDate ? dateString.toDate() : new Date(dateString);
+                return date.toLocaleDateString("pt-BR");
+            } catch (e) {
+                return "Data inválida";
+            }
+        }
+
+        function formatCurrency(value) {
+            return new Intl.NumberFormat("pt-BR", {
+                style: "currency",
+                currency: "BRL"
+            }).format(value);
+        }
+    </script>
+    
+    <!-- Biblioteca para PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     
     <style>
+        :root {
+            --primary: #2c3e50;
+            --secondary: #34495e;
+            --accent: #3498db;
+            --gray: #bdc3c7;
+            --light: #ecf0f1;
+            --success: #2ecc71;
+            --danger: #e74c3c;
+        }
+        
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Roboto', sans-serif;
+            background-color: var(--gray);
             margin: 0;
             padding: 0;
-            background: #f0f0f0;
         }
+        
         header {
-            background: #2c3e50;
+            background: var(--primary);
             color: white;
-            padding: 15px;
+            padding: 15px 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
         }
+        
         .container {
-            max-width: 1000px;
+            max-width: 1200px;
             margin: 20px auto;
-            padding: 0 15px;
+            padding: 0 20px;
         }
+        
         .card {
             background: white;
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             padding: 20px;
             margin-bottom: 20px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
         }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: var(--secondary);
+            font-weight: 500;
+        }
+        
+        input, textarea, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+        
         button {
             padding: 10px 15px;
-            background: #4CAF50;
+            background: var(--accent);
             color: white;
             border: none;
-            border-radius: 4px;
+            border-radius: 5px;
             cursor: pointer;
+            margin: 5px 0;
+            box-shadow: 0 3px 5px rgba(0,0,0,0.1);
+            transition: all 0.3s;
         }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 8px rgba(0,0,0,0.2);
+        }
+        
+        .btn-success {
+            background: var(--success);
+        }
+        
+        .btn-danger {
+            background: var(--danger);
+        }
+        
         .logout-btn {
-            background: #e74c3c;
+            background: var(--danger);
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        th {
+            background-color: var(--light);
+        }
+        
+        .file-upload {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+        }
+        
+        .file-upload input[type="file"] {
+            display: none;
+        }
+        
+        .file-label {
+            background: var(--light);
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        
+        .file-name {
+            color: #7f8c8d;
+        }
+        
+        .receipt-preview {
+            max-width: 200px;
+            max-height: 200px;
+            margin-top: 10px;
+            display: none;
         }
     </style>
 </head>
@@ -58,80 +648,131 @@
     </header>
     
     <div class="container">
-        <!-- INFORMAÇÕES DA OBRA -->
+        <!-- 1. Informações da Obra -->
         <div class="card">
             <h2>Informações da Obra</h2>
-            <input type="text" id="obra-nome" placeholder="Nome da Obra">
-            <input type="number" id="obra-valor" placeholder="Valor (R$)">
-            <input type="date" id="obra-data">
-            <button id="salvar-obra">Salvar</button>
+            <div class="form-group">
+                <label for="project-name">Nome da Obra</label>
+                <input type="text" id="project-name" placeholder="Ex: Casa Residencial">
+            </div>
+            <div class="form-group">
+                <label for="project-value">Valor do Serviço (R$)</label>
+                <input type="number" id="project-value" placeholder="0,00" step="0.01">
+            </div>
+            <div class="form-group">
+                <label for="project-start">Data de Início</label>
+                <input type="date" id="project-start">
+            </div>
+            <div class="form-group">
+                <label for="project-description">Descrição</label>
+                <textarea id="project-description" rows="3" placeholder="Breve descrição"></textarea>
+            </div>
+            <button id="save-project-btn">Salvar Informações</button>
         </div>
         
-        <!-- VALES RECEBIDOS -->
+        <!-- 2. Vales Recebidos -->
         <div class="card">
             <h2>Vales Recebidos</h2>
-            <input type="number" id="vale-valor" placeholder="Valor (R$)">
-            <input type="date" id="vale-data">
-            <button id="add-vale">Adicionar Vale</button>
+            <div class="form-group">
+                <label for="payment-value">Valor (R$)</label>
+                <input type="number" id="payment-value" placeholder="0,00" step="0.01">
+            </div>
+            <div class="form-group">
+                <label for="payment-date">Data</label>
+                <input type="date" id="payment-date">
+            </div>
+            <div class="form-group">
+                <label for="payment-description">Descrição</label>
+                <input type="text" id="payment-description" placeholder="Ex: Primeiro vale">
+            </div>
+            <button id="add-payment-btn">Adicionar Vale</button>
+            
+            <table id="payments-table">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Descrição</th>
+                        <th>Valor</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        
+        <!-- 3. Serviços Extras -->
+        <div class="card">
+            <h2>Serviços Extras</h2>
+            <div class="form-group">
+                <label for="extra-service">Descrição</label>
+                <input type="text" id="extra-service" placeholder="Ex: Construção de muro">
+            </div>
+            <div class="form-group">
+                <label for="extra-value">Valor (R$)</label>
+                <input type="number" id="extra-value" placeholder="0,00" step="0.01">
+            </div>
+            <div class="form-group">
+                <label for="extra-date">Data</label>
+                <input type="date" id="extra-date">
+            </div>
+            <button id="add-extra-btn">Adicionar Serviço</button>
+            
+            <table id="extras-table">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Serviço</th>
+                        <th>Valor</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        
+        <!-- 4. Comprovantes PIX -->
+        <div class="card">
+            <h2>Comprovantes PIX</h2>
+            <div class="form-group">
+                <label for="receipt-description">Descrição</label>
+                <input type="text" id="receipt-description" placeholder="Ex: Comprovante do vale 1">
+            </div>
+            <div class="form-group">
+                <label>Arquivo</label>
+                <div class="file-upload">
+                    <label for="receipt-file" class="file-label">Selecionar Arquivo</label>
+                    <span class="file-name" id="file-name">Nenhum arquivo selecionado</span>
+                    <input type="file" id="receipt-file" accept="image/*,.pdf">
+                </div>
+                <img id="receipt-preview" class="receipt-preview" alt="Pré-visualização">
+            </div>
+            <button id="add-receipt-btn">Adicionar Comprovante</button>
+            
+            <table id="receipts-table">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Descrição</th>
+                        <th>Arquivo</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        
+        <!-- 5. Relatório -->
+        <div class="card">
+            <h2>Relatório Financeiro</h2>
+            <div id="report-summary">
+                <p>Valor da Obra: <span id="project-value-display">R$ 0,00</span></p>
+                <p>Total Serviços Extras: <span id="total-extras">R$ 0,00</span></p>
+                <p>Valor Total (Obra + Extras): <span id="total-value">R$ 0,00</span></p>
+                <p>Total Vales Recebidos: <span id="total-received">R$ 0,00</span></p>
+                <p>Saldo: <span id="balance">R$ 0,00</span></p>
+            </div>
+            <button id="generate-pdf-btn" class="btn-success">Gerar PDF</button>
         </div>
     </div>
-
-    <script>
-        // CONFIG DO FIREBASE (MESMA DO INDEX.HTML)
-        const firebaseConfig = {
-            apiKey: "AIzaSyC5cnKYsZ5wCI8Aeho0KEmeFTSxtDd0AkY",
-            authDomain: "construtora-jhs-2693d.firebaseapp.com",
-            projectId: "construtora-jhs-2693d",
-            storageBucket: "construtora-jhs-2693d.appspot.com",
-            messagingSenderId: "358435009217",
-            appId: "1:358435009217:web:2e11ec33ee15a8b7ac9a40"
-        };
-        
-        // INICIALIZA O FIREBASE
-        firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
-        const db = firebase.firestore();
-        
-        // VERIFICA SE O USUÁRIO ESTÁ LOGADO
-        auth.onAuthStateChanged((user) => {
-            if (!user) {
-                window.location.href = "index.html";
-            }
-        });
-        
-        // BOTÃO DE SAIR
-        document.getElementById("logout-btn").addEventListener("click", () => {
-            auth.signOut();
-        });
-        
-        // SALVAR INFORMAÇÕES DA OBRA
-        document.getElementById("salvar-obra").addEventListener("click", () => {
-            const obraData = {
-                nome: document.getElementById("obra-nome").value,
-                valor: document.getElementById("obra-valor").value,
-                data: document.getElementById("obra-data").value,
-                userId: auth.currentUser.uid
-            };
-            
-            db.collection("obras").doc(auth.currentUser.uid).set(obraData)
-                .then(() => {
-                    alert("Obra salva com sucesso!");
-                });
-        });
-        
-        // ADICIONAR VALE
-        document.getElementById("add-vale").addEventListener("click", () => {
-            const valeData = {
-                valor: document.getElementById("vale-valor").value,
-                data: document.getElementById("vale-data").value,
-                userId: auth.currentUser.uid
-            };
-            
-            db.collection("vales").add(valeData)
-                .then(() => {
-                    alert("Vale adicionado!");
-                });
-        });
-    </script>
 </body>
 </html>
